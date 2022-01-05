@@ -4651,15 +4651,7 @@ static void wma_set_roam_offload_flag(tp_wma_handle wma, uint8_t vdev_id,
 	if (is_set) {
 		flag = WMI_ROAM_FW_OFFLOAD_ENABLE_FLAG |
 		       WMI_ROAM_BMISS_FINAL_SCAN_ENABLE_FLAG;
-	/*
-	 * If WMI_ROAM_BMISS_FINAL_SCAN_ENABLE_FLAG is set, then
-	 * WMI_ROAM_BMISS_FINAL_SCAN_TYPE_FLAG decides whether firmware
-	 * does channel map based partial scan or partial scan followed
-	 * by full scan in case no candidate is found in partial scan.
-	 */
-	if (wma->bmiss_skip_full_scan)
-		flag |= WMI_ROAM_BMISS_FINAL_SCAN_TYPE_FLAG;
-
+	
 		/*
 		 * If 4-way HS offload is disabled then let supplicant handle
 		 * 4way HS and firmware will still do LFR3.0 till reassoc phase.
