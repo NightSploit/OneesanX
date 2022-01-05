@@ -1126,6 +1126,11 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 	spin_lock(&zone->lock);
 	isolated_pageblocks = has_isolate_pageblock(zone);
 
+	/*
+	 * Ensure proper count is passed which otherwise would stuck in the
+	 * below while (list_empty(list)) loop.
+	 */
+	count = min(pcp->count, count);
 	while (count) {
 		struct page *page;
 		struct list_head *list;
@@ -3506,10 +3511,10 @@ static void wake_all_kswapds(unsigned int order, gfp_t gfp_mask,
 	pg_data_t *last_pgdat = NULL;
 	enum zone_type high_zoneidx = ac->high_zoneidx;
 
-	for_each_zone_zonelist_nodemask(zone, z, ac->zonelist, high_zoneidx,
-					ac->nodemask) {
+	for_each_zone_zonelist_nodemask(zone, z, ac->zonelist,
+					ac->high_zoneidx, ac->nodemask) {
 		if (last_pgdat != zone->zone_pgdat)
-			wakeup_kswapd(zone, gfp_mask, order, high_zoneidx);
+			wakeup_kswapd(zone, order, ac->high_zoneidx);
 		last_pgdat = zone->zone_pgdat;
 	}
 }
@@ -4764,7 +4769,7 @@ int numa_zonelist_order_handler(struct ctl_table *table, int write,
 			user_zonelist_order = oldval;
 		} else if (oldval != user_zonelist_order) {
 			mutex_lock(&zonelists_mutex);
-			build_all_zonelists(NULL, NULL);
+			build_all_zonelists(NULL, NULL, false);
 			mutex_unlock(&zonelists_mutex);
 		}
 	}
@@ -6943,7 +6948,7 @@ int __meminit init_per_zone_wmark_min(void)
 
 	return 0;
 }
-core_initcall(init_per_zone_wmark_min)
+postcore_initcall(init_per_zone_wmark_min)
 
 /*
  * min_free_kbytes_sysctl_handler - just a wrapper around proc_dointvec() so
