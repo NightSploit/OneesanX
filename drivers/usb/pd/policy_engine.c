@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2018, Linux Foundation. All rights reserved.
+/* Copyright (c) 2016-2020, Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -45,6 +45,13 @@ MODULE_PARM_DESC(disable_usb_pd, "Disable USB PD for USB3.1 compliance testing")
 static bool rev3_sink_only;
 module_param(rev3_sink_only, bool, 0644);
 MODULE_PARM_DESC(rev3_sink_only, "Enable power delivery rev3.0 sink only mode");
+
+#define XR1_DISCOVER_VDO 0x1085
+#define XR1_DEFAULT_VDO 0x0
+#define XR1_PIN_E_VDO 0x0082
+#define DP_USBPD_EVT_STATUS_XR1 0x10
+#define DP_USBPD_EVT_CONFIGURE_XR1 0x11
+static bool sxr_dp_mode;
 
 enum usbpd_state {
 	PE_UNKNOWN,
@@ -404,6 +411,9 @@ struct rx_msg {
 #define IS_EXT(m, t) ((m) && PD_MSG_HDR_IS_EXTENDED((m)->hdr) && \
 		(PD_MSG_HDR_TYPE((m)->hdr) == (t)))
 
+#define SXR_SEND_SVDM(pd, cmd, num, tx_vdos, pos) usbpd_send_svdm(pd, 0xFF01, \
+						cmd, SVDM_CMD_TYPE_RESP_ACK, \
+						 num, tx_vdos, pos)
 struct usbpd {
 	struct device		dev;
 	struct workqueue_struct	*wq;
@@ -501,10 +511,7 @@ struct usbpd {
 	u8			get_battery_status_db;
 	bool			send_get_battery_status;
 	u32			battery_sts_dobj;
-#if defined(CONFIG_SOMC_CHARGER_EXTENSION)
-
-	struct wdet		*wdet;
-#endif
+	bool			is_sxr_dp_sink;
 };
 
 static LIST_HEAD(_usbpd);	/* useful for debugging */
@@ -1298,9 +1305,6 @@ static void usbpd_set_state(struct usbpd *pd, enum usbpd_state next_state)
 			start_usb_host(pd, true);
 			pd->ss_lane_svid = 0x0;
 		}
-#if defined(CONFIG_SOMC_CHARGER_EXTENSION)
-		wdet_polling_set(pd->wdet, WDET_POLLING_STOP);
-#endif
 
 		dual_role_instance_changed(pd->dual_role);
 
@@ -1463,9 +1467,6 @@ static void usbpd_set_state(struct usbpd *pd, enum usbpd_state next_state)
 				usb_compliance_mode)
 				start_usb_peripheral(pd);
 		}
-#if defined(CONFIG_SOMC_CHARGER_EXTENSION)
-		wdet_polling_set(pd->wdet, WDET_POLLING_STOP);
-#endif
 
 		dual_role_instance_changed(pd->dual_role);
 
@@ -1762,7 +1763,47 @@ static void handle_vdm_rx(struct usbpd *pd, struct rx_msg *rx_msg)
 	}
 
 	if (handler && handler->svdm_received) {
-		handler->svdm_received(handler, cmd, cmd_type, vdos, num_vdos);
+		if (pd->is_sxr_dp_sink) {
+			u32 tx_vdos[1];
+
+			switch (cmd) {
+			/*CMD 3, Type 1, PayLoad 43 */
+			case USBPD_SVDM_DISCOVER_MODES:
+				usbpd_dbg(&pd->dev,
+					 "USBPD_SVDM_DISCOVER_MODES\n");
+				tx_vdos[0] = XR1_DISCOVER_VDO;
+				usbpd_dbg(&pd->dev, "sending RESP_ACK\n");
+				SXR_SEND_SVDM(pd, cmd, 0x0, tx_vdos, 0x1);
+				break;
+			/*CMD 4, Type 1, PayLoad 44 */
+			case USBPD_SVDM_ENTER_MODE:
+				usbpd_dbg(&pd->dev, "USBPD_SVDM_ENTER_MODE\n");
+				tx_vdos[0] = XR1_DEFAULT_VDO;
+				usbpd_dbg(&pd->dev, "sending RESP_ACK\n");
+				SXR_SEND_SVDM(pd, cmd, 0x1, tx_vdos, 0x0);
+				break;
+			/*CMD 10, Type 1, PayLoad 50 */
+			case DP_USBPD_EVT_STATUS_XR1:
+				tx_vdos[0] = XR1_PIN_E_VDO; // Pin assign E
+				usbpd_dbg(&pd->dev,
+					"DP_USBPD_EVT_STATUS_XR1\n");
+				SXR_SEND_SVDM(pd, cmd, 0x1, tx_vdos, 0x1);
+				break;
+			/*CMD 11, Type 1, PayLoad 51 */
+			case DP_USBPD_EVT_CONFIGURE_XR1:
+				usbpd_dbg(&pd->dev,
+					 "DP_USBPD_EVT_CONFIGURE_XR1\n");
+				tx_vdos[0] = XR1_DEFAULT_VDO;
+				usbpd_dbg(&pd->dev,
+						 "DP_USBPD_EVT_STATUS_XR1\n");
+				SXR_SEND_SVDM(pd, cmd, 0x1, tx_vdos, 0x0);
+				break;
+			default:
+				usbpd_dbg(&pd->dev, "default mode:%d\n", cmd);
+			}
+		} else
+			handler->svdm_received(handler, cmd, cmd_type, vdos,
+								 num_vdos);
 		return;
 	}
 
@@ -1780,9 +1821,21 @@ static void handle_vdm_rx(struct usbpd *pd, struct rx_msg *rx_msg)
 
 			usbpd_send_svdm(pd, USBPD_SID, cmd,
 					SVDM_CMD_TYPE_RESP_ACK, 0, tx_vdos, 3);
-		} else if (cmd != USBPD_SVDM_ATTENTION) {
-			usbpd_send_svdm(pd, svid, cmd, SVDM_CMD_TYPE_RESP_NAK,
+		} else if (cmd != USBPD_SVDM_ATTENTION)  {
+			if (pd->is_sxr_dp_sink) {
+				u32 tx_vdos_pd[3] = {
+					ID_HDR_VID,
+					0xFF01,
+					0x0,
+					};
+				usbpd_send_svdm(pd, USBPD_SID, cmd,
+					SVDM_CMD_TYPE_RESP_ACK, 0,
+					 tx_vdos_pd, 3);
+			} else {
+				usbpd_send_svdm(pd, svid, cmd,
+					SVDM_CMD_TYPE_RESP_NAK,
 					SVDM_HDR_OBJ_POS(vdm_hdr), NULL, 0);
+			}
 		}
 		break;
 
@@ -2242,10 +2295,6 @@ static void usbpd_sm(struct work_struct *w)
 
 		pd->current_state = PE_UNKNOWN;
 
-#if defined(CONFIG_SOMC_CHARGER_EXTENSION)
-		wdet_invalid_during_negotiation(pd->wdet);
-		wdet_polling_set(pd->wdet, WDET_POLLING_START);
-#endif
 		kobject_uevent(&pd->dev.kobj, KOBJ_CHANGE);
 		dual_role_instance_changed(pd->dual_role);
 
@@ -3130,10 +3179,6 @@ static int psy_changed(struct notifier_block *nb, unsigned long evt, void *ptr)
 
 	pd->psy_type = val.intval;
 
-#if defined(CONFIG_SOMC_CHARGER_EXTENSION)
-	if (typec_mode == POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER)
-		wdet_polling_reset(pd->wdet);
-#endif
 	/*
 	 * For sink hard reset, state machine needs to know when VBUS changes
 	 *   - when in PE_SNK_TRANSITION_TO_DEFAULT, notify when VBUS falls
@@ -4343,6 +4388,15 @@ struct usbpd *usbpd_create(struct device *parent)
 		goto put_psy;
 	}
 
+	/*
+	 * Need to set is_sxr_dp_sink to TRUE only when device tree node is
+	 * present, and sim_vid_display string is present in
+	 * boot_command_line string.
+	 */
+	if (sxr_dp_mode)
+		pd->is_sxr_dp_sink = device_property_present(parent,
+						"qcom,sxr1130-sxr-dp-sink");
+
 	pd->vconn_is_external = device_property_present(parent,
 					"qcom,vconn-uses-external-source");
 
@@ -4426,11 +4480,6 @@ struct usbpd *usbpd_create(struct device *parent)
 	/* force read initial power_supply values */
 	psy_changed(&pd->psy_nb, PSY_EVENT_PROP_CHANGED, pd->usb_psy);
 
-#if defined(CONFIG_SOMC_CHARGER_EXTENSION)
-	pd->wdet = wdet_create(parent);
-	if (IS_ERR_OR_NULL(pd->wdet))
-		goto del_inst;
-#endif
 	return pd;
 
 del_inst:
@@ -4457,9 +4506,6 @@ void usbpd_destroy(struct usbpd *pd)
 	if (!pd)
 		return;
 
-#if defined(CONFIG_SOMC_CHARGER_EXTENSION)
-	wdet_destroy(pd->wdet);
-#endif
 	list_del(&pd->instance);
 	power_supply_unreg_notifier(&pd->psy_nb);
 	power_supply_put(pd->usb_psy);
@@ -4470,6 +4516,15 @@ EXPORT_SYMBOL(usbpd_destroy);
 
 static int __init usbpd_init(void)
 {
+	char *cmdline;
+
+	cmdline = strnstr(boot_command_line,
+			"msm_drm.dsi_display0=dsi_sim_vid_display",
+				strlen(boot_command_line));
+	sxr_dp_mode = false;
+	if (cmdline)
+		sxr_dp_mode = true;
+
 	usbpd_ipc_log = ipc_log_context_create(NUM_LOG_PAGES, "usb_pd", 0);
 	return class_register(&usbpd_class);
 }

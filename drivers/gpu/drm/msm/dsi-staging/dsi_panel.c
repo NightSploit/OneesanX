@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -501,6 +501,8 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 	return dsi_panel_driver_power_off(panel);
 #else
 	int rc = 0;
+
+	dsi_panel_exd_disable(panel);
 
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio))
 		gpio_set_value(panel->reset_config.disp_en_gpio, 0);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1533,6 +1533,7 @@ static int __cam_isp_ctx_rdi_only_sof_in_bubble_applied(
 		notify.req_id = req->request_id;
 		notify.error = CRM_KMD_ERR_BUBBLE;
 		ctx->ctx_crm_intf->notify_err(&notify);
+		atomic_set(&ctx_isp->process_bubble, 1);
 		CAM_DBG(CAM_ISP, "Notify CRM about Bubble frame %lld",
 			ctx_isp->frame_id);
 	} else {
@@ -1634,7 +1635,7 @@ static int __cam_isp_ctx_rdi_only_sof_in_bubble_state(
 		CAM_REQ_MGR_SOF_EVENT_SUCCESS);
 
 	ctx_isp->substate_activated = CAM_ISP_CTX_ACTIVATED_SOF;
-
+	
 	CAM_DBG(CAM_ISP, "next substate %d",
 		ctx_isp->substate_activated);
 

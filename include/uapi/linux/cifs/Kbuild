@@ -1,1 +1,6 @@
+<<<<<<< HEAD
 header-y += cifs_mount.h
+=======
+# UAPI Header export list
+no-export-headers += cifs_mount.h
+>>>>>>> 5272c89ba6fc0f67d3facf3a8244d6f61d51c570

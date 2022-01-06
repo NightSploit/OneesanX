@@ -1,4 +1,4 @@
-/* Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -142,6 +142,8 @@ struct cam_isp_context_state_monitor {
  * @cam_isp_ctx_state_monitor: State monitoring array
  * @rdi_only_context:          Get context type information.
  *                             true, if context is rdi only context
+ * @bubble_sof_count:          Atomic variable to check if ctx has any sof's
+ *                             while processing bubble
  *
  */
 struct cam_isp_context {
