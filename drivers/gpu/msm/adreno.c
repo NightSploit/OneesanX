@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2002,2007-2018 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1184,7 +1184,7 @@ static int adreno_of_get_power(struct adreno_device *adreno_dev,
 		device->pwrctrl.pm_qos_wakeup_latency = 101;
 
 	if (of_property_read_u32(node, "qcom,idle-timeout", &timeout))
-		timeout = 80;
+		timeout = 58;
 
 	device->pwrctrl.interval_timeout = msecs_to_jiffies(timeout);
 
@@ -3248,7 +3248,7 @@ static void adreno_gmu_regwrite(struct kgsl_device *device,
 	 * i.e. act like normal writel()
 	 */
 	wmb();
-	__raw_writel_no_log(value, reg);
+	__raw_writel(value, reg);
 }
 
 static void adreno_gmu_regread(struct kgsl_device *device,
