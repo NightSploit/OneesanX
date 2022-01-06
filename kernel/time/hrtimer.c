@@ -845,7 +845,7 @@ static int enqueue_hrtimer(struct hrtimer *timer,
 	base->cpu_base->active_bases |= 1 << base->index;
 
 	/* Pairs with the lockless read in hrtimer_is_queued() */
-	WRITE_ONCE(timer->state, HRTIMER_STATE_ENQUEUED);
+	WRITE_ONCE(timer->state, timer->state | HRTIMER_STATE_ENQUEUED);
 
 	return timerqueue_add(&base->active, &timer->node);
 }
@@ -865,7 +865,6 @@ static void __remove_hrtimer(struct hrtimer *timer,
 			     u8 newstate, int reprogram)
 {
 	struct hrtimer_cpu_base *cpu_base = base->cpu_base;
-	unsigned int state = timer->state;
 
 	if (!(timer->state & HRTIMER_STATE_ENQUEUED))
 		goto out;
@@ -891,7 +890,9 @@ out:
 	* We need to preserve PINNED state here, otherwise we may end up
 	* migrating pinned hrtimers as well.
 	*/
-	timer->state = newstate | (timer->state & HRTIMER_STATE_PINNED);
+	/* Pairs with the lockless read in hrtimer_is_queued() */
+	WRITE_ONCE(timer->state,
+		   newstate | (timer->state & HRTIMER_STATE_PINNED));
 }
 
 /*
