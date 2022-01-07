@@ -623,8 +623,6 @@ static int smb2_parse_dt(struct smb2 *chip)
 	else
 		pr_debug("Wireless Temp Monitoring is disabled.\n");
 #endif
-	chg->ufp_only_mode = of_property_read_bool(node,
-					"qcom,ufp-only-mode");
 
 	return 0;
 }
@@ -1341,6 +1339,8 @@ static enum power_supply_property smb2_batt_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
+	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
+	POWER_SUPPLY_PROP_TIME_TO_FULL_NOW,
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
 	POWER_SUPPLY_PROP_FCC_STEPPER_ENABLE,
 #if defined(CONFIG_SOMC_CHARGER_EXTENSION)
@@ -1481,6 +1481,7 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CYCLE_COUNT:
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 	case POWER_SUPPLY_PROP_TEMP:
+	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
 		rc = smblib_get_prop_from_bms(chg, psp, val);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
